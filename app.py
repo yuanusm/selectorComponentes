@@ -30,13 +30,13 @@ def seleccionar_componentes(f_target, H_target, Vcc, tol=0.05, serie="E24", top_
     R_list = generar_e_series(serie, max_decadas=6)
     C_list = [1e-12, 2.2e-12, 4.7e-12, 1e-11, 2.2e-11, 4.7e-11, 1e-10, 2.2e-10, 4.7e-10,
               1e-9, 2.2e-9, 4.7e-9, 1e-8, 2.2e-8, 4.7e-8, 1e-7, 2.2e-7, 4.7e-7,
-              1e-6, 2.2e-6, 4.7e-6, 1e-5, 2.2e-5, 4.7e-5]
+              1e-6, 2.2e-6, 4.7e-6, 1e-5, 2.2e-5, 4.7e-5]  # pF a ~47µF
 
     mejores = []
 
     for R1, R2 in itertools.product(R_list, repeat=2):
         if R2 < 100 or R1 < 100:
-            continue
+            continue  # evitar valores muy pequeños
         k = R1 / R2
         err_k = abs(k - k_target) / k_target
         if err_k > tol * 1.5:
@@ -44,6 +44,7 @@ def seleccionar_componentes(f_target, H_target, Vcc, tol=0.05, serie="E24", top_
 
         for Ra in [r for r in R_list if r >= 560]:
             Cf_ideal = P_target / Ra
+            # Cf comercial más cercano
             Cf = min(C_list, key=lambda c: abs(c - Cf_ideal))
 
             H_calc = 2 * (R1 / R2) * Vcc
@@ -54,140 +55,138 @@ def seleccionar_componentes(f_target, H_target, Vcc, tol=0.05, serie="E24", top_
 
             if err_total <= tol:
                 mejores.append({
-                    "R1": R1, "R2": R2, "Ra": Ra, "Cf": Cf * 1e9,
+                    "R1": R1, "R2": R2, "Ra": Ra, "Cf": Cf * 1e9,  # en nF para mejor lectura
                     "H_calc": round(H_calc, 3),
                     "f_calc": round(f_calc, 2),
                     "error_%": round(err_total * 100, 2)
                 })
 
-    return sorted(mejores, key=lambda x: x["error_%"])[:top_n]
+    # Ordenar por menor error
+    mejores = sorted(mejores, key=lambda x: x["error_%"])[:top_n]
+    return mejores
 
 
 class App(CTk):
     def __init__(self):
         super().__init__()
-
         self.title("Selector de Componentes")
         self.geometry("420x420")
-        self.minsize(400, 400)
+        self.resizable(False, False)
 
-        # Fonts compactas
-        self.f_title = ctk.CTkFont(size=15, weight="bold")
-        self.f_label = ctk.CTkFont(size=11)
-        self.f_input = ctk.CTkFont(size=11)
-        self.f_btn = ctk.CTkFont(size=12, weight="bold")
-        self.f_mono = ctk.CTkFont(family="Consolas", size=10)
+        self.font_toolbar = ctk.CTkFont(size=10)
+        self.font_title = ctk.CTkFont(size=13, weight="bold")
+        self.font_label = ctk.CTkFont(size=11)
+        self.font_entry = ctk.CTkFont(size=11)
+        self.font_button = ctk.CTkFont(size=12, weight="bold")
+        self.font_result = ctk.CTkFont(family="Consolas", size=10)
 
-        self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
 
-        main = CTkFrame(self, corner_radius=0, fg_color="transparent")
-        main.grid(row=0, column=0, sticky="nsew", padx=8, pady=6)
+        main = CTkFrame(self, fg_color="transparent")
+        main.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
         main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(4, weight=1)
+        main.grid_rowconfigure(4, weight=1)  # solo resultados expande
 
-        # Toolbar
-        toolbar = CTkFrame(main, corner_radius=8, fg_color=("#222834", "#1B2230"))
-        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        # [ Toolbar (very thin) ]
+        toolbar = CTkFrame(main, corner_radius=6, fg_color=("#202632", "#1B2130"), height=30)
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 2))
+        toolbar.grid_propagate(False)
         toolbar.grid_columnconfigure(1, weight=1)
 
-        CTkLabel(toolbar, text="Circuito", font=self.f_label).grid(row=0, column=0, padx=(8, 4), pady=5)
+        CTkLabel(toolbar, text="Circuito:", font=self.font_toolbar).grid(
+            row=0, column=0, padx=(6, 4), pady=2, sticky="w"
+        )
         self.circuit_var = ctk.StringVar(value="Oscilador triangular")
         self.circuit_menu = CTkOptionMenu(
             toolbar,
             values=["Oscilador triangular", "Filtro RC", "Amplificador"],
             variable=self.circuit_var,
-            height=26,
-            font=self.f_input,
-            dropdown_font=self.f_input,
+            height=22,
+            font=self.font_toolbar,
+            dropdown_font=self.font_toolbar,
+            dynamic_resizing=False,
             anchor="w",
         )
-        self.circuit_menu.grid(row=0, column=1, padx=(0, 8), pady=5, sticky="ew")
+        self.circuit_menu.grid(row=0, column=1, padx=(0, 6), pady=2, sticky="ew")
 
-        # Title
+        # [ Title (small) ]
         CTkLabel(
             main,
-            text="Calculadora de valores comerciales",
-            font=self.f_title,
-            anchor="w"
-        ).grid(row=1, column=0, sticky="w", pady=(0, 4), padx=2)
+            text="Calculadora de Valores Comerciales",
+            font=self.font_title,
+            anchor="center",
+        ).grid(row=1, column=0, sticky="ew", pady=(0, 2))
 
-        # Input panel
-        inputs = CTkFrame(main, corner_radius=10, fg_color=("#1D222D", "#181D27"))
-        inputs.grid(row=2, column=0, sticky="ew", pady=(0, 5))
-        inputs.grid_columnconfigure(1, weight=1)
+        # [ Input Panel (compact grid) ]
+        input_panel = CTkFrame(main, corner_radius=8, fg_color=("#1A1F2A", "#151B26"))
+        input_panel.grid(row=2, column=0, sticky="ew", pady=(0, 2))
+        input_panel.grid_columnconfigure(0, weight=0)
+        input_panel.grid_columnconfigure(1, weight=1)
 
-        label_pad = {"padx": (8, 6), "pady": 3}
-        entry_pad = {"padx": (0, 8), "pady": 3}
+        lbl_pad = {"padx": (6, 4), "pady": 1}
+        ent_pad = {"padx": (0, 6), "pady": 1}
 
-        CTkLabel(inputs, text="Frecuencia (Hz)", font=self.f_label).grid(row=0, column=0, sticky="e", **label_pad)
-        self.f_entry = CTkEntry(inputs, height=26, font=self.f_input)
-        self.f_entry.grid(row=0, column=1, sticky="ew", **entry_pad)
+        CTkLabel(input_panel, text="Frecuencia (Hz):", font=self.font_label).grid(row=0, column=0, sticky="e", **lbl_pad)
+        self.f_entry = CTkEntry(input_panel, height=24, font=self.font_entry)
+        self.f_entry.grid(row=0, column=1, sticky="ew", **ent_pad)
         self.f_entry.insert(0, "1000")
 
-        CTkLabel(inputs, text="Histeresis (Vpp)", font=self.f_label).grid(row=1, column=0, sticky="e", **label_pad)
-        self.h_entry = CTkEntry(inputs, height=26, font=self.f_input)
-        self.h_entry.grid(row=1, column=1, sticky="ew", **entry_pad)
+        CTkLabel(input_panel, text="Histeresis (Vpp):", font=self.font_label).grid(row=1, column=0, sticky="e", **lbl_pad)
+        self.h_entry = CTkEntry(input_panel, height=24, font=self.font_entry)
+        self.h_entry.grid(row=1, column=1, sticky="ew", **ent_pad)
         self.h_entry.insert(0, "5")
 
-        CTkLabel(inputs, text="Vcc (V)", font=self.f_label).grid(row=2, column=0, sticky="e", **label_pad)
-        self.vcc_entry = CTkEntry(inputs, height=26, font=self.f_input)
-        self.vcc_entry.grid(row=2, column=1, sticky="ew", **entry_pad)
+        CTkLabel(input_panel, text="Vcc (V):", font=self.font_label).grid(row=2, column=0, sticky="e", **lbl_pad)
+        self.vcc_entry = CTkEntry(input_panel, height=24, font=self.font_entry)
+        self.vcc_entry.grid(row=2, column=1, sticky="ew", **ent_pad)
         self.vcc_entry.insert(0, "12")
 
-        CTkLabel(inputs, text="Tolerancia (%)", font=self.f_label).grid(row=3, column=0, sticky="e", **label_pad)
-        self.tol_entry = CTkEntry(inputs, height=26, font=self.f_input)
-        self.tol_entry.grid(row=3, column=1, sticky="ew", **entry_pad)
+        CTkLabel(input_panel, text="Tolerancia (%):", font=self.font_label).grid(row=3, column=0, sticky="e", **lbl_pad)
+        self.tol_entry = CTkEntry(input_panel, height=24, font=self.font_entry)
+        self.tol_entry.grid(row=3, column=1, sticky="ew", **ent_pad)
         self.tol_entry.insert(0, "5")
 
-        CTkLabel(inputs, text="Serie", font=self.f_label).grid(row=4, column=0, sticky="e", **label_pad)
+        CTkLabel(input_panel, text="Serie:", font=self.font_label).grid(row=4, column=0, sticky="e", **lbl_pad)
         self.serie_var = ctk.StringVar(value="E24")
         self.serie_menu = CTkOptionMenu(
-            inputs,
+            input_panel,
             values=["E12", "E24"],
             variable=self.serie_var,
-            height=26,
-            font=self.f_input,
-            dropdown_font=self.f_input,
+            height=24,
+            font=self.font_entry,
+            dropdown_font=self.font_entry,
+            dynamic_resizing=False,
             anchor="w",
         )
-        self.serie_menu.grid(row=4, column=1, sticky="w", **entry_pad)
+        self.serie_menu.grid(row=4, column=1, sticky="w", **ent_pad)
 
-        # Primary action button
+        # [ Action Button ]
         self.btn_calcular = CTkButton(
             main,
             text="Calcular",
-            command=self.calcular,
-            height=30,
+            font=self.font_button,
             width=140,
-            font=self.f_btn,
+            height=28,
+            corner_radius=8,
+            command=self.calcular,
             fg_color="#2563EB",
             hover_color="#1D4ED8",
-            corner_radius=8,
         )
-        self.btn_calcular.grid(row=3, column=0, pady=(0, 5))
+        self.btn_calcular.grid(row=3, column=0, pady=(0, 2))
 
-        # Results panel
+        # [ Results Panel (fills remaining space) ]
         self.textbox = CTkTextbox(
             main,
-            font=self.f_mono,
+            font=self.font_result,
+            wrap="none",
             corner_radius=8,
             border_width=1,
             border_color="#2A2F3A",
-            wrap="none",
         )
-        self.textbox.grid(row=4, column=0, sticky="nsew", padx=1, pady=(0, 0))
+        self.textbox.grid(row=4, column=0, sticky="nsew", padx=0, pady=0)
 
-        self._set_initial_message()
-
-    def _set_initial_message(self):
-        self.textbox.configure(state="normal")
-        self.textbox.delete("1.0", "end")
-        self.textbox.insert(
-            "end",
-            "Sistema listo.\n"
-            "Selecciona circuito, ingresa parámetros y presiona Calcular.\n"
-        )
+        self.textbox.insert("0.0", "Sistema listo. Ingresa parámetros y presiona Calcular.\n")
         self.textbox.configure(state="disabled")
 
     def calcular(self):
@@ -197,15 +196,15 @@ class App(CTk):
             Vcc = float(self.vcc_entry.get())
             tol = float(self.tol_entry.get()) / 100.0
             serie = self.serie_var.get()
-            circuito = self.circuit_var.get()
 
             if f <= 0 or H <= 0 or Vcc <= 0 or tol <= 0:
                 raise ValueError("Los valores deben ser positivos")
 
             self.textbox.configure(state="normal")
             self.textbox.delete("1.0", "end")
-            self.textbox.insert("end", f"Circuito: {circuito}\n")
-            self.textbox.insert("end", f"f = {f} Hz | H = {H} V | Vcc = {Vcc} V | Tol ≤ {tol*100:.1f}%\n")
+            self.textbox.insert("end", f"Buscando combinaciones para:\n")
+            self.textbox.insert("end", f"Circuito: {self.circuit_var.get()}\n")
+            self.textbox.insert("end", f"f={f} Hz | H={H} V | Vcc={Vcc} V | Tol≤{tol*100:.1f}%\n")
             self.textbox.insert("end", f"Serie: {serie}\n\n")
             self.textbox.insert("end", "Calculando...\n\n")
             self.update()
@@ -217,19 +216,16 @@ class App(CTk):
                 self.textbox.insert("end", "No se encontraron combinaciones dentro de la tolerancia.\n")
                 self.textbox.insert("end", "Intenta aumentar la tolerancia o cambiar los valores.")
             else:
-                self.textbox.insert("end", f"{len(resultados)} combinaciones válidas:\n\n")
-                self.textbox.insert(
-                    "end",
-                    f"{'R1':>8} {'R2':>8} {'Ra':>8} {'Cf(nF)':>8} {'H':>8} {'f(Hz)':>10} {'Err%':>7}\n"
-                )
-                self.textbox.insert("end", "-" * 70 + "\n")
+                self.textbox.insert("end", f"Se encontraron {len(resultados)} combinaciones válidas:\n\n")
+                self.textbox.insert("end", "R1(Ω)    R2(Ω)    Ra(Ω)    Cf(nF)    H_calc    f_calc(Hz)   Error(%)\n")
+                self.textbox.insert("end", "-" * 76 + "\n")
+
                 for r in resultados:
-                    self.textbox.insert(
-                        "end",
-                        f"{r['R1']:>8.1f} {r['R2']:>8.1f} {r['Ra']:>8.1f} {r['Cf']:>8.2f} "
-                        f"{r['H_calc']:>8.3f} {r['f_calc']:>10.2f} {r['error_%']:>7.2f}\n"
-                    )
-                self.textbox.insert("end", "\nRecomendación: elegir menor Error (%).")
+                    linea = f"{r['R1']:>7.1f}  {r['R2']:>7.1f}  {r['Ra']:>7.1f}  {r['Cf']:>8.2f}  "
+                    linea += f"{r['H_calc']:>8.3f}  {r['f_calc']:>10.2f}  {r['error_%']:>8.2f}\n"
+                    self.textbox.insert("end", linea)
+
+                self.textbox.insert("end", "\nRecomendación: Elige la fila con menor Error (%).")
 
             self.textbox.configure(state="disabled")
 
